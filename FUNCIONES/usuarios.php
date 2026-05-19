@@ -1,0 +1,103 @@
+<?php
+/*
+    FUNCIONES/usuarios.php
+    Mesa de Servicio
+
+    Este archivo sigue el mismo patrón de ACTIVACIONES_SL:
+    aquí se concentran las consultas que regresan arreglos de usuarios
+    por rol/perfil, usando las tablas reales del sistema.
+*/
+
+function obtener_ids_desde_consulta_mesa($conn, $sql, $params = [])
+{
+    $ids = [];
+    $stmt = sqlsrv_query($conn, $sql, $params);
+
+    if ($stmt === false) {
+        return $ids;
+    }
+
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        if (isset($row['id_empleado'])) {
+            $ids[] = (int)$row['id_empleado'];
+        }
+    }
+
+    return $ids;
+}
+
+function obtener_usuarios_activos_mesa_servicio($conn)
+{
+    $sql = "SELECT id_empleado
+            FROM dbo.tbl_empleados
+            WHERE ISNULL(estatus, 1) = 1";
+
+    return obtener_ids_desde_consulta_mesa($conn, $sql);
+}
+
+function obtener_desarrolladores_mesa_servicio_bd($conn)
+{
+    /*
+        En la simulación local actual:
+        - 5274 tiene id_perfil = 15 y representa Desarrollo.
+        En producción puedes ampliar esta regla por id_area, puesto o una tabla catálogo.
+    */
+    $sql = "SELECT id_empleado
+            FROM dbo.tbl_empleados
+            WHERE ISNULL(estatus, 1) = 1
+              AND id_perfil = 15";
+
+    return obtener_ids_desde_consulta_mesa($conn, $sql);
+}
+
+function obtener_supervisores_mesa_servicio($conn)
+{
+    $sql = "SELECT DISTINCT es.id_super AS id_empleado
+            FROM dbo.tbl_empleados_super es
+            INNER JOIN dbo.tbl_empleados e
+                ON e.id_empleado = es.id_super
+            WHERE ISNULL(es.estatus, 1) = 1
+              AND ISNULL(e.estatus, 1) = 1";
+
+    return obtener_ids_desde_consulta_mesa($conn, $sql);
+}
+
+function obtener_ejecutivos_mesa_servicio($conn)
+{
+    $sql = "SELECT id_empleado
+            FROM dbo.tbl_empleados
+            WHERE ISNULL(estatus, 1) = 1
+              AND id_perfil = 1";
+
+    return obtener_ids_desde_consulta_mesa($conn, $sql);
+}
+
+function obtener_administrativos_mesa_servicio($conn)
+{
+    /*
+        Por ahora se consideran usuarios activos que no son ejecutivos,
+        supervisores ni desarrolladores. Se deja como arreglo separado
+        para poder ajustar la regla después sin tocar roles.php.
+    */
+    $desarrolladores = obtener_desarrolladores_mesa_servicio_bd($conn);
+    $supervisores = obtener_supervisores_mesa_servicio($conn);
+    $ejecutivos = obtener_ejecutivos_mesa_servicio($conn);
+
+    $excluir = array_unique(array_merge($desarrolladores, $supervisores, $ejecutivos));
+
+    if (empty($excluir)) {
+        $sql = "SELECT id_empleado
+                FROM dbo.tbl_empleados
+                WHERE ISNULL(estatus, 1) = 1";
+        return obtener_ids_desde_consulta_mesa($conn, $sql);
+    }
+
+    $placeholders = implode(',', array_fill(0, count($excluir), '?'));
+    $sql = "SELECT id_empleado
+            FROM dbo.tbl_empleados
+            WHERE ISNULL(estatus, 1) = 1
+              AND id_empleado NOT IN ($placeholders)";
+
+    return obtener_ids_desde_consulta_mesa($conn, $sql, $excluir);
+}
+?>
