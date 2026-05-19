@@ -6,3 +6,6 @@ fetch('MESA_SERVICIO/AJAX/tickets/guardar.php')
 fetch('MESA_SERVICIO/AJAX/incidencias/actualizar_inline.php')
 fetch('MESA_SERVICIO/AJAX/tickets/asignar.php')
 fetch('MESA_SERVICIO/AJAX/tickets/actualizar.php')
+
+
+$base = '?check=6641311242';
