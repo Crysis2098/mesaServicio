@@ -1,1 +1,8 @@
 <script src="MESA_SERVICIO/JS/mesa_trabajo.js?v=mesa-servicio-produccion-1"></script>
+
+
+fetch('MESA_SERVICIO/AJAX/incidencias/guardar.php')
+fetch('MESA_SERVICIO/AJAX/tickets/guardar.php')
+fetch('MESA_SERVICIO/AJAX/incidencias/actualizar_inline.php')
+fetch('MESA_SERVICIO/AJAX/tickets/asignar.php')
+fetch('MESA_SERVICIO/AJAX/tickets/actualizar.php')
