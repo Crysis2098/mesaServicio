@@ -17,115 +17,649 @@ href="?check=6641311242&vista=asignar"
 href="?check=6641311242&vista=asignaciones"
 
 
-usuarios.php:
+index.php:
+<?php
+/*
+    MESA DE SERVICIO
+    Patrón basado en ACTIVACIONES_SL.
+
+    En producción este archivo debe ser incluido/ejecutado desde el index global de TVTAS,
+    donde ya existen variables como:
+    $id_empleado, $callcenter, $id_perfil, etc.
+*/
+
+/* SOLO PRUEBAS LOCALES
+   Comenta este bloque en producción si las variables ya vienen del index global.
+*/
+// $id_empleado = 5274;
+// $callcenter = 1;
+// $id_perfil = 15;
+
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
+/*
+    Conexión global TVTAS.
+    Se usa __DIR__ para evitar errores por rutas relativas.
+*/
+require_once __DIR__ . '/../CONEXION_CON_UTF8.PHP';
+
+/*
+    Includes del módulo.
+*/
+if (file_exists(__DIR__ . '/detectar_plantilla.php')) {
+    include __DIR__ . '/detectar_plantilla.php';
+}
+
+include __DIR__ . '/FUNCIONES/usuarios.php';
+include __DIR__ . '/FUNCIONES/roles.php';
+include __DIR__ . '/MODELS/mesa_trabajo_model.php';
+
+/*
+    Validación mínima de variables heredadas.
+*/
+if (!isset($id_empleado)) {
+    $id_empleado = 0;
+}
+
+if (!isset($callcenter)) {
+    $callcenter = 0;
+}
+
+if (!isset($id_perfil)) {
+    $id_perfil = 0;
+}
+
+$id_empleado = (int)$id_empleado;
+$callcenter = (int)$callcenter;
+$id_perfil = (int)$id_perfil;
+
+/*
+    Sesión para endpoints AJAX.
+    Esto permite que los AJAX no dependan de POST para identificar al usuario.
+*/
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+$_SESSION['id_empleado'] = $id_empleado;
+$_SESSION['callcenter'] = $callcenter;
+$_SESSION['id_perfil'] = $id_perfil;
+
+/*
+    Arrays de permisos desde BD.
+    Estilo ACTIVACIONES_SL: usuarios.php obtiene listas de ids.
+*/
+$usuarios_mesa = obtener_usuarios_mesa_servicio($conn);
+$administradores_mesa = obtener_administradores_mesa_servicio($conn);
+$desarrolladores_mesa = obtener_desarrolladores_mesa_servicio_bd($conn);
+$supervisores_mesa = obtener_supervisores_mesa_servicio($conn);
+$ejecutivos_mesa = obtener_ejecutivos_mesa_servicio($conn);
+$administrativos_mesa = obtener_administrativos_mesa_servicio($conn);
+
+/*
+    Tipo de usuario dentro del módulo.
+*/
+$tipo_usuario = obtener_tipo_usuario_mesa_servicio(
+    $id_empleado,
+    $administradores_mesa,
+    $desarrolladores_mesa,
+    $supervisores_mesa,
+    $ejecutivos_mesa,
+    $administrativos_mesa,
+    $usuarios_mesa
+);
+
+/*
+    Vista actual.
+*/
+$vista = isset($_GET['vista']) ? trim($_GET['vista']) : '';
+
+if ($vista === '') {
+    $vista = obtener_vista_inicial_mesa_servicio($tipo_usuario);
+}
+
+/*
+    Menú y permisos de vistas.
+*/
+$menu_botones = obtener_menu_por_tipo_mesa_servicio($tipo_usuario);
+
+$vistas_permitidas = obtener_vistas_permitidas_mesa_servicio($tipo_usuario);
+
+$vista_permitida = in_array($vista, $vistas_permitidas, true);
+
+/*
+    Datos comunes del usuario.
+*/
+$empleado_actual = null;
+
+if ($id_empleado > 0) {
+    $empleado_actual = obtener_empleado_mesa($conn, $id_empleado);
+}
+
+$puede_desarrollo = puede_entrar_desarrollo_mesa($tipo_usuario);
+$es_supervisor = ($tipo_usuario === 'supervisor' || $tipo_usuario === 'administrador_mesa');
+$es_desarrollador = ($tipo_usuario === 'desarrollador' || $tipo_usuario === 'administrador_mesa');
+
+/*
+    Supervisores y administradores ven general.
+    Desarrolladores ven principalmente sus propias incidencias.
+*/
+$solo_propias = true;
+
+if ($tipo_usuario === 'supervisor' || $tipo_usuario === 'administrador_mesa') {
+    $solo_propias = false;
+}
+
+/*
+    Header.
+*/
+include __DIR__ . '/VIEWS/LAYOUTS/header.php';
+
+/*
+    Seguridad real de vistas.
+    Aunque alguien manipule la URL, si no tiene permiso no entra.
+*/
+if ($tipo_usuario === 'sin_acceso' || $vista === 'sin_acceso' || !$vista_permitida) {
+    include __DIR__ . '/VIEWS/LAYOUTS/acceso_denegado.php';
+    echo '</body></html>';
+    sqlsrv_close($conn);
+    exit;
+}
+
+/*
+    Menú principal.
+*/
+include __DIR__ . '/VIEWS/LAYOUTS/menu_principal.php';
+
+echo '<br><br>';
+
+/*
+    Routing simple del módulo.
+*/
+switch ($vista) {
+
+    case 'reportar_ticket':
+        $nombre_reporta = isset($empleado_actual['nombre'])
+            ? $empleado_actual['nombre']
+            : 'Usuario no detectado';
+
+        include __DIR__ . '/VIEWS/TICKETS/reportar.php';
+        break;
+
+    case 'bitacora':
+    case 'bitacora_desarrollo':
+        if (!$puede_desarrollo) {
+            include __DIR__ . '/VIEWS/LAYOUTS/acceso_denegado.php';
+            break;
+        }
+
+        $jerarquia = obtener_jerarquia_mesa($conn, $id_empleado);
+
+        $nombre_captura = isset($empleado_actual['nombre'])
+            ? $empleado_actual['nombre']
+            : 'Usuario no detectado';
+
+        $fecha_captura = date('Y-m-d H:i:s');
+
+        $stmt_incidencias = listar_incidencias_mesa(
+            $conn,
+            $id_empleado,
+            $solo_propias
+        );
+
+        include __DIR__ . '/VIEWS/BITACORA/index.php';
+        break;
+
+    case 'registro_semanal':
+        if (!$puede_desarrollo) {
+            include __DIR__ . '/VIEWS/LAYOUTS/acceso_denegado.php';
+            break;
+        }
+
+        $anio_actual = (int)date('Y');
+        $mes_actual = (int)date('n');
+
+        $year = isset($_GET['year']) ? (int)$_GET['year'] : $anio_actual;
+        $month = isset($_GET['month']) ? (int)$_GET['month'] : $mes_actual;
+
+        if ($year < 2000 || $year > 2100) {
+            $year = $anio_actual;
+        }
+
+        if ($month < 1 || $month > 12) {
+            $month = $mes_actual;
+        }
+
+        $resultado_semanal = listar_registro_semanal_mesa(
+            $conn,
+            $id_empleado,
+            $solo_propias,
+            $year,
+            $month
+        );
+
+        $stmt_incidencias = $resultado_semanal['stmt'];
+        $tiempos_por_semana = $resultado_semanal['tiempos'];
+
+        include __DIR__ . '/VIEWS/BITACORA/registro_semanal.php';
+        break;
+
+    case 'asignaciones':
+        if (!$puede_desarrollo) {
+            include __DIR__ . '/VIEWS/LAYOUTS/acceso_denegado.php';
+            break;
+        }
+
+        $stmt_asignaciones = listar_tickets_asignados_mesa(
+            $conn,
+            $id_empleado,
+            $es_supervisor
+        );
+
+        include __DIR__ . '/VIEWS/TICKETS/asignaciones.php';
+        break;
+
+    case 'asignar':
+        if (!$puede_desarrollo) {
+            include __DIR__ . '/VIEWS/LAYOUTS/acceso_denegado.php';
+            break;
+        }
+
+        $desarrolladores_mesa_lista = listar_desarrolladores_mesa_servicio($conn);
+        $stmt_tickets = listar_tickets_para_asignar_mesa($conn);
+
+        include __DIR__ . '/VIEWS/TICKETS/asignar.php';
+        break;
+
+    default:
+        echo '<div id="cam_titulo"><span>Vista no encontrada</span></div>';
+        echo '<div id="contenido_formulario">';
+        echo '<section class="form-card">';
+        echo '<div class="form-card-header">';
+        echo '<h2>La vista solicitada no existe</h2>';
+        echo '<p>Regresa al menú principal.</p>';
+        echo '</div>';
+        echo '</section>';
+        echo '</div>';
+        break;
+}
+
+echo '</body></html>';
+
+// sqlsrv_close($conn);
+?>
+
+usuarios.php
 <?php
 
+/*
+    FUNCIONES/usuarios.php
+    Mesa de Servicio
 
+    Basado en el patrón de ACTIVACIONES_SL.
+    Aquí solo se obtienen arreglos de id_empleado desde BD.
+*/
 
 function obtener_ids_desde_consulta($conn, $sql, $params = [])
-
 {
-
     $ids = [];
-
-
 
     $stmt = sqlsrv_query($conn, $sql, $params);
 
-
-
     if ($stmt === false) {
-
         return $ids;
-
     }
-
-
 
     while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-
         if (isset($row['id_empleado'])) {
-
             $ids[] = (int)$row['id_empleado'];
-
         }
-
     }
 
-
-
     return $ids;
-
 }
 
-
-
-function obtener_perfiles_administradores($conn)
-
+/*
+    Todos los usuarios existentes.
+    No usamos columna estatus porque en producción no existe.
+*/
+function obtener_usuarios_mesa_servicio($conn)
 {
-
     $sql = "SELECT id_empleado
+            FROM tbl_empleados";
 
+    return obtener_ids_desde_consulta($conn, $sql);
+}
+
+/*
+    Administradores especiales de Mesa de Servicio.
+    Puedes ajustar esta lista conforme autorices usuarios.
+*/
+function obtener_administradores_mesa_servicio($conn)
+{
+    $sql = "SELECT id_empleado
             FROM tbl_empleados
-
             WHERE id_empleado IN (546, 8804, 6046, 1602, 5274, 1971)";
 
-
-
     return obtener_ids_desde_consulta($conn, $sql);
-
 }
 
-
-
-function obtener_perfiles_administradores_otros_recintos($conn)
-
+/*
+    Desarrolladores.
+    Por lo que venimos manejando, id_perfil = 15 representa desarrollo.
+*/
+function obtener_desarrolladores_mesa_servicio_bd($conn)
 {
-
     $sql = "SELECT id_empleado
-
             FROM tbl_empleados
-
-            WHERE id_empleado IN (10407, 7322, 4451, 2593)";
-
-
+            WHERE id_perfil = 15";
 
     return obtener_ids_desde_consulta($conn, $sql);
-
 }
 
-
-
-function obtener_perfiles_validacion($conn)
-
+/*
+    Supervisores.
+    Se obtienen desde tbl_empleados_super.
+    Se usa alias id_empleado para reutilizar obtener_ids_desde_consulta().
+*/
+function obtener_supervisores_mesa_servicio($conn)
 {
-
-    $sql = "SELECT id_empleado
-
-            FROM tbl_empleados
-
-            WHERE id_perfil = 6 OR id_area = 8";
-
-
+    $sql = "SELECT DISTINCT id_super AS id_empleado
+            FROM tbl_empleados_super";
 
     return obtener_ids_desde_consulta($conn, $sql);
-
 }
 
-
-
-function obtener_perfiles_ejecutivos($conn)
-
+/*
+    Ejecutivos.
+    Igual que en ACTIVACIONES_SL: id_perfil = 1.
+*/
+function obtener_ejecutivos_mesa_servicio($conn)
 {
-
     $sql = "SELECT id_empleado
-
             FROM tbl_empleados
-
-            WHERE id_perfil = 1/*AND id_empleado IN (6142, 2521, 2946, 9672, 9704, 11205, 6130, 6182, 11532, 11751, 6130, 8016, 8391, 2338, 9097)*/";
-
-
+            WHERE id_perfil = 1";
 
     return obtener_ids_desde_consulta($conn, $sql);
-
 }
+
+/*
+    Administrativos / validación / otros usuarios internos.
+    Si después tienes perfiles específicos, aquí se ajusta.
+    Por ahora se toma un rango común de perfiles que no son ejecutivo ni desarrollo.
+*/
+function obtener_administrativos_mesa_servicio($conn)
+{
+    $sql = "SELECT id_empleado
+            FROM tbl_empleados
+            WHERE id_perfil IN (2, 3, 4, 5, 6)
+               OR id_area = 8";
+
+    return obtener_ids_desde_consulta($conn, $sql);
+}
+
+?>
+
+roles.php
+<?php
+
+/*
+    FUNCIONES/roles.php
+    Mesa de Servicio
+
+    Basado en ACTIVACIONES_SL:
+    usuarios.php obtiene usuarios desde BD.
+    roles.php interpreta esos arreglos y arma permisos/menú.
+*/
+
+function obtener_tipo_usuario_mesa_servicio(
+    $id_empleado,
+    $administradores_mesa,
+    $desarrolladores_mesa,
+    $supervisores_mesa,
+    $ejecutivos_mesa,
+    $administrativos_mesa,
+    $usuarios_mesa = []
+) {
+    $id_empleado = (int)$id_empleado;
+
+    if (!empty($usuarios_mesa) && !in_array($id_empleado, $usuarios_mesa, true)) {
+        return 'sin_acceso';
+    }
+
+    /*
+        Orden de prioridad:
+        1. Administrador del módulo
+        2. Supervisor
+        3. Desarrollador
+        4. Ejecutivo
+        5. Administrativo
+        6. Usuario genérico
+    */
+    if (in_array($id_empleado, $administradores_mesa, true)) {
+        return 'administrador_mesa';
+    }
+
+    if (in_array($id_empleado, $supervisores_mesa, true)) {
+        return 'supervisor';
+    }
+
+    if (in_array($id_empleado, $desarrolladores_mesa, true)) {
+        return 'desarrollador';
+    }
+
+    if (in_array($id_empleado, $ejecutivos_mesa, true)) {
+        return 'ejecutivo';
+    }
+
+    if (in_array($id_empleado, $administrativos_mesa, true)) {
+        return 'administrativo';
+    }
+
+    if (in_array($id_empleado, $usuarios_mesa, true)) {
+        return 'usuario';
+    }
+
+    return 'sin_acceso';
+}
+
+function puede_entrar_desarrollo_mesa($tipo_usuario)
+{
+    return in_array(
+        $tipo_usuario,
+        ['administrador_mesa', 'supervisor', 'desarrollador'],
+        true
+    );
+}
+
+function obtener_menu_por_tipo_mesa_servicio($tipo_usuario)
+{
+    /*
+        Check del módulo Mesa de Servicio.
+        Igual que ACTIVACIONES_SL, el módulo debe navegar dentro del index global.
+    */
+    $base = '?check=6641311250';
+
+    switch ($tipo_usuario) {
+
+        case 'administrador_mesa':
+            return [
+                [
+                    'label' => 'Reportar Ticket',
+                    'url'   => $base . '&vista=reportar_ticket',
+                    'icono' => '📝'
+                ],
+                [
+                    'label' => 'Bitácora - Desarrollo',
+                    'url'   => $base . '&vista=bitacora_desarrollo',
+                    'icono' => '▦'
+                ],
+                [
+                    'label' => 'Registro Semanal',
+                    'url'   => $base . '&vista=registro_semanal',
+                    'icono' => '▤'
+                ],
+                [
+                    'label' => 'Asignaciones',
+                    'url'   => $base . '&vista=asignaciones',
+                    'icono' => '☑'
+                ],
+                [
+                    'label' => 'Asignar',
+                    'url'   => $base . '&vista=asignar',
+                    'icono' => '✎'
+                ],
+            ];
+
+        case 'supervisor':
+            return [
+                [
+                    'label' => 'Reportar Ticket',
+                    'url'   => $base . '&vista=reportar_ticket',
+                    'icono' => '📝'
+                ],
+                [
+                    'label' => 'Asignaciones',
+                    'url'   => $base . '&vista=asignaciones',
+                    'icono' => '☑'
+                ],
+                [
+                    'label' => 'Asignar',
+                    'url'   => $base . '&vista=asignar',
+                    'icono' => '✎'
+                ],
+            ];
+
+        case 'desarrollador':
+            return [
+                [
+                    'label' => 'Reportar Ticket',
+                    'url'   => $base . '&vista=reportar_ticket',
+                    'icono' => '📝'
+                ],
+                [
+                    'label' => 'Bitácora - Desarrollo',
+                    'url'   => $base . '&vista=bitacora_desarrollo',
+                    'icono' => '▦'
+                ],
+                [
+                    'label' => 'Registro Semanal',
+                    'url'   => $base . '&vista=registro_semanal',
+                    'icono' => '▤'
+                ],
+                [
+                    'label' => 'Asignaciones',
+                    'url'   => $base . '&vista=asignaciones',
+                    'icono' => '☑'
+                ],
+                [
+                    'label' => 'Asignar',
+                    'url'   => $base . '&vista=asignar',
+                    'icono' => '✎'
+                ],
+            ];
+
+        case 'ejecutivo':
+        case 'administrativo':
+        case 'usuario':
+            return [
+                [
+                    'label' => 'Reportar Ticket',
+                    'url'   => $base . '&vista=reportar_ticket',
+                    'icono' => '📝'
+                ],
+            ];
+
+        default:
+            return [];
+    }
+}
+
+function obtener_vistas_permitidas_mesa_servicio($tipo_usuario)
+{
+    switch ($tipo_usuario) {
+
+        case 'administrador_mesa':
+            return [
+                'reportar_ticket',
+                'bitacora',
+                'bitacora_desarrollo',
+                'registro_semanal',
+                'asignaciones',
+                'asignar'
+            ];
+
+        case 'desarrollador':
+            return [
+                'reportar_ticket',
+                'bitacora',
+                'bitacora_desarrollo',
+                'registro_semanal',
+                'asignaciones',
+                'asignar'
+            ];
+
+        case 'supervisor':
+            return [
+                'reportar_ticket',
+                'asignaciones',
+                'asignar'
+            ];
+
+        case 'ejecutivo':
+        case 'administrativo':
+        case 'usuario':
+            return [
+                'reportar_ticket'
+            ];
+
+        default:
+            return [];
+    }
+}
+
+function obtener_vista_inicial_mesa_servicio($tipo_usuario)
+{
+    switch ($tipo_usuario) {
+
+        case 'administrador_mesa':
+        case 'desarrollador':
+            return 'asignaciones';
+
+        case 'supervisor':
+            return 'asignar';
+
+        case 'ejecutivo':
+        case 'administrativo':
+        case 'usuario':
+            return 'reportar_ticket';
+
+        default:
+            return 'sin_acceso';
+    }
+}
+
+/*
+    Compatibilidad con nombres usados en versiones anteriores.
+    Esto evita errores si algún AJAX o script viejo todavía llama estas funciones.
+*/
+function obtener_desarrolladores_mesa_servicio()
+{
+    return [5274];
+}
+
+function es_desarrollador_mesa_servicio($id_empleado)
+{
+    return in_array((int)$id_empleado, obtener_desarrolladores_mesa_servicio(), true);
+}
+
+function obtener_menu_mesa_trabajo($tipo_usuario, $id_empleado = 0)
+{
+    return obtener_menu_por_tipo_mesa_servicio($tipo_usuario);
+}
+
+?>
+
+
+
