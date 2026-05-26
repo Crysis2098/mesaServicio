@@ -661,5 +661,73 @@ function obtener_menu_mesa_trabajo($tipo_usuario, $id_empleado = 0)
 
 ?>
 
+PROYECTO OBJECIONES:
+CREATE TABLE dbo.tbl_objeciones_general(
+   id_objecion INT IDENTITY(1,1) PRIMARY KEY NOT NULL,
+   nombre_servicio NVARCHAR(250) NOT NULL,
+   motivo_objecion NVARCHAR(250) NOT NULL,
+   script_objecion NVARCHAR(1000) NOT NULL,
+   tipo_de_registro TINYINT NOT NULL, -- 1 = Scripts, 2 = Objeciones
+   eliminado BIT NOT NULL DEFAULT 0,
+   fecha_carga DATETIME NOT NULL DEFAULT GETDATE(),
+   fecha_actualizacion DATETIME NULL,
+   creado_por INT NULL,
+   actualizado_por INT NULL
+);
+ 
 
+
+CREATE INDEX IX_tbl_objeciones_general_tipo_eliminado
+ON dbo.tbl_objeciones_general(tipo_de_registro, eliminado);
+CREATE INDEX IX_tbl_objeciones_general_eliminado_fecha
+ON dbo.tbl_objeciones_general(eliminado, fecha_carga DESC);
+CREATE INDEX IX_tbl_objeciones_general_servicio
+ON dbo.tbl_objeciones_general(nombre_servicio);
+CREATE INDEX IX_tbl_objeciones_general_motivo
+ON dbo.tbl_objeciones_general(motivo_objecion);
+CREATE UNIQUE INDEX UX_tbl_objeciones_general_tipo_servicio_motivo
+ON dbo.tbl_objeciones_general(tipo_de_registro, nombre_servicio, motivo_objecion)
+WHERE eliminado = 0;
+
+
+
+
+
+
+INSERT INTO tbl_objeciones_general (
+    nombre_servicio, 
+    motivo_objecion, 
+    script_objecion, 
+    tipo_de_registro, 
+    eliminado, 
+    fecha_carga
+)
+VALUES 
+-- Registro 1
+(
+    N'izzi TV+', 
+    N'Autoinstalación#1', 
+    N'Le comento que, si elige la opción de auto‑instalación, su equipo será entregado directamente en la puerta de su casa para que pueda instalarlo fácilmente. El proceso es sencillo y, además, le permitirá ahorrar los $500 correspondientes a la visita de un técnico. El equipo incluye instrucciones claras y detalladas; sin embargo, si en algún momento tiene dudas, puede comunicarse al 8001205000, opción 2, donde con gusto le brindarán asistencia.',
+    2, 
+    0, 
+    GETDATE()
+),
+-- Registro 2 (Separado por coma)
+(
+    N'izzi TV+', 
+    N'Autoinstalación#2', 
+    N'Le comento que, si elige la auto‑instalación, su equipo llegará directamente a la puerta de su casa. Es un proceso sencillo y le permitirá ahorrar los $500 de la visita de un técnico. El equipo incluye instrucciones claras y, si necesita apoyo, puede llamar al 8001205000, opción 2.',
+    2, 
+    0, 
+    GETDATE()
+),
+-- Registro 3 (Separado por coma)
+(
+    N'izzi TV+', 
+    N'Autoinstalación#3', 
+    N'Si decide instalarlo usted mismo, le llevaremos el equipo hasta la puerta de su casa. Es muy fácil de configurar y, además, se ahorrará los $500 que cuesta la visita de un técnico. El paquete trae instrucciones claras, y si en algún momento necesita ayuda, puede llamarnos al 8001205000, opción 2.',
+    2, 
+    0, 
+    GETDATE()
+);
 
