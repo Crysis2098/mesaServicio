@@ -1,15 +1,21 @@
 #tablaAsignarTickets th:nth-child(12),
-#tablaAsignarTickets td:nth-child(12){
+#tablaAsignarTickets td:nth-child(12) {
     width: 800px;
+    min-width: 800px;
+    max-width: 800px;
     white-space: normal;
     overflow-wrap: anywhere;
-
 }
+
 #tablaAsignarTickets td:nth-child(12) select,
 #tablaAsignarTickets td:nth-child(12) button {
     width: 100%;
     min-width: 0;
+    box-sizing: border-box;
 }
+
+
+
 <script src="MESA_SERVICIO/JS/mesa_trabajo.js?v=mesa-servicio-produccion-1"></script>
 
 
