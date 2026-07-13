@@ -8,7 +8,10 @@
 }
 
 
-
+#tablaAsignarTickets td:nth-child(12) select {
+    width: 100%;
+    min-width: 0;
+}
 
 <script src="MESA_SERVICIO/JS/mesa_trabajo.js?v=mesa-servicio-produccion-1"></script>
 
